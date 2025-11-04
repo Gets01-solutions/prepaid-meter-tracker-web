@@ -1,1 +1,813 @@
 
+<!-- Save as prepaid-meter-tracker.html -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Prepaid Meter Tracker</title>
+  <meta name="description" content="Offline-first prepaid meter tracker for electricians" />
+  <style>
+  :root {
+    --bg:#0f1724;
+    --card:#0b1220;
+    --muted:#94a3b8;
+    --accent:#f59e0b;
+    --success:#10b981;
+    --danger:#ef4444;
+    color-scheme:dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0; height: 100%; width: 100%; overflow-x: hidden;
+    font-family: Inter, Segoe UI, system-ui, Arial;
+    background: linear-gradient(180deg,#071025 0%, #071129 100%);
+    color: #e6eef8;
+  }
+
+  header {
+    display: flex; align-items: center; gap: 12px; padding: 18px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.03); flex-wrap: wrap;
+  }
+
+  .brand { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+  .logo {
+    width: 44px; height: 44px;
+    background: linear-gradient(135deg, var(--accent), #f97316);
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 8px; font-weight: 700; color: #07203a;
+  }
+
+  main {
+    padding: 20px; display: grid; grid-template-columns: 360px 1fr;
+    gap: 18px; max-width: 100%; overflow-x: hidden;
+  }
+
+  .card {
+    background: var(--card); padding: 16px; border-radius: 12px;
+    box-shadow: 0 6px 20px rgba(2,6,23,0.6); overflow: hidden;
+  }
+
+  form .row { display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+
+  label { font-size:13px; color:var(--muted); display:block; margin-bottom:6px; }
+
+  input[type=text], input[type=tel], select, textarea {
+    width:100%; padding:10px; border-radius:8px;
+    border:1px solid rgba(255,255,255,0.04); background:transparent; color:inherit;
+  }
+
+  button {
+    background: var(--accent); color: #061827; padding:8px 12px;
+    border-radius:8px; border:0; cursor:pointer; font-weight:600;
+  }
+
+  .muted { color:var(--muted); font-size:13px; }
+
+  .list { max-height:72vh; overflow-y:auto; overflow-x:hidden; padding-right:4px; }
+
+  .meter-item {
+    padding: 12px; border-radius:10px; border:1px solid rgba(255,255,255,0.03);
+    margin-bottom: 8px; display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;
+  }
+
+  .meta { font-size:13px; color:var(--muted); }
+
+  .actions { display:flex; gap:6px; flex-shrink:0; }
+  .actions button { margin:0; white-space:nowrap; }
+
+  .topbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .search { flex:1; min-width:160px; }
+
+  .status {
+    padding: 6px 10px; border-radius:999px; background: rgba(255,255,255,0.02);
+    font-size:13px; white-space:nowrap;
+  }
+
+  footer { padding:14px 20px; color:var(--muted); font-size:13px; text-align:center; }
+
+  /* AUTH MODAL FIX */
+  #authModal {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    background: rgba(2,6,23,0.6); z-index: 999; overflow-y: auto;
+  }
+  #authModal > div { width: 360px; max-width: 90%; background: var(--card); padding: 18px; border-radius: 12px; margin: 20px; }
+
+  /* Small screens */
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; padding: 12px; }
+    .card { margin-bottom: 12px; }
+    header { flex-direction: column; align-items: flex-start; }
+    .actions { width:100%; justify-content:flex-end; }
+    .meter-item { flex-direction: column; }
+  }
+
+  /* small utility */
+  .btn-ghost { background: transparent; border: 1px solid rgba(255,255,255,0.04); color: inherit; padding: 8px 10px; border-radius:8px; cursor:pointer; }
+  .muted.small { font-size: 12px; color: var(--muted); }
+  #syncLog {
+  display: none !important;
+}
+#syncLog {
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo">PM</div>
+      <div>
+        <div style="font-weight:700">Prepaid Meter Tracker</div>
+        <div class="muted small">Offline-first · Hostable · CSV export</div>
+      </div>
+    </div>
+    <div style="margin-left:auto;display:flex;gap:10px;align-items:center">
+      <div id="onlineStatus" class="status">Offline</div>
+      <div id="currentUser" class="muted">Not signed in</div>
+      <button id="openAuth" class="btn-ghost">Sign in / Register</button>
+      <button id="openSettings" class="btn-ghost">Settings</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="card" id="leftCard">
+      <h3 style="margin-top:0">Add / Edit Meter</h3>
+      <form id="meterForm">
+        <div class="row"><div style="flex:1"><label>Meter number</label><input id="meter_number" required autocomplete="off" type="text"></div></div>
+        <div class="row"><div style="flex:1"><label>Customer name</label><input id="customer_name" autocomplete="off" type="text"></div></div>
+        <div class="row"><div style="flex:1"><label>Customer number</label><input id="customer_number" autocomplete="off" type="tel"></div></div>
+        <div class="row"><div style="flex:1"><label>Address / Location</label><input id="address" autocomplete="off" type="text"></div></div>
+        <div class="row"><div style="flex:1"><label>Type of meter</label><select id="meter_type"><option>Single Phase</option><option>Three Phase</option><option>Smart</option><option>Prepaid</option></select></div></div>
+        <div class="row"><div style="flex:1"><label>Electrical reference</label><input id="electrical_ref" autocomplete="off" type="text"></div></div>
+        <div class="row"><div style="flex:1"><label>Geographic reference (lat,lng)</label><input id="geo_ref" placeholder="e.g. 1.2345,103.1234" type="text"></div></div>
+        <div class="row"><button type="button" id="captureGeo" class="btn-ghost">Capture GPS</button><div class="muted" style="padding:8px 0">(click to capture coordinates from device)</div></div>
+        <div class="row"><label>Date recorded</label><input id="recorded_at" readonly type="text"></div>
+        <input type="hidden" id="editing_id">
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="saveBtn" type="button">Save Record</button>
+          <button id="resetBtn" type="button" class="btn-ghost">Reset</button>
+          <button id="deleteEditing" type="button" class="btn-ghost" style="margin-left:auto;display:none;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.18);color:var(--muted)">Delete</button>
+        </div>
+      </form>
+
+      <hr style="border:none;height:1px;background:rgba(255,255,255,0.03);margin:12px 0">
+      <div style="display:flex;gap:8px;align-items:center">
+        <button id="exportCsv">Export CSV</button>
+        <label style="display:inline-flex;align-items:center;gap:8px">
+          <input id="importFile" type="file" accept=".csv,text/csv" style="display:none">
+          <button id="importBtn" type="button" class="btn-ghost">Import CSV</button>
+        </label>
+        <button id="clearAll" style="margin-left:auto;background:#ef4444">Clear All</button>
+      </div>
+
+      <div style="margin-top:12px" class="muted">Sync queue: <span id="queueCount">0</span> records</div>
+      <div style="margin-top:6px" class="muted small">Sync endpoint: <span id="currentEndpoint">/api/sync</span></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <input id="q" placeholder="Search by meter, customer, address..." class="search" type="text" />
+        <select id="filterType"><option value="">All types</option><option>Single Phase</option><option>Three Phase</option><option>Smart</option><option>Prepaid</option></select>
+        <button id="refreshBtn" class="btn-ghost">Refresh</button>
+      </div>
+
+      <div class="list" id="list"></div>
+      <div id="syncLog" class="muted small" style="margin-top:8px;max-height:120px;overflow:auto"></div>
+    </div>
+  </main>
+
+  <footer>Tip: Save this file and open it in your browser. Replace local auth & sync with a server (I can help).</footer>
+
+  <!-- Auth modal -->
+  <div id="authModal" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,0.6);z-index:60">
+    <div style="width:380px;background:var(--card);padding:18px;border-radius:12px">
+      <h3 style="margin-top:0">Sign in / Register</h3>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <button id="tabSignIn" class="btn-ghost">Sign in</button>
+        <button id="tabRegister" class="btn-ghost">Register</button>
+        <button id="closeAuth" style="margin-left:auto;background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted)" class="btn-ghost">Close</button>
+      </div>
+      <div id="authForms">
+        <div id="signinForm">
+          <label>Username</label><input id="signin_user" type="text">
+          <label>Password</label><input id="signin_pass" type="password">
+          <div style="margin-top:8px"><button id="btnSignIn">Sign in</button></div>
+        </div>
+        <div id="registerForm" style="display:none">
+          <label>Username</label><input id="reg_user" type="text">
+          <label>Password</label><input id="reg_pass" type="password">
+          <div style="margin-top:8px"><button id="btnRegister">Create account</button></div>
+        </div>
+      </div>
+      <div class="muted" style="margin-top:10px">Local accounts only. For production, use a hosted auth provider (Firebase/Auth0) and server-side storage.</div>
+    </div>
+  </div>
+
+  <!-- Settings modal -->
+  <div id="settingsModal" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,0.6);z-index:60">
+    <div style="width:420px;background:var(--card);padding:18px;border-radius:12px">
+      <h3 style="margin-top:0">Settings</h3>
+      <div class="row-col" style="gap:8px">
+        <div>
+          <label>Sync endpoint (POST)</label>
+          <input id="syncEndpoint" placeholder="/api/sync" type="text">
+          <div class="muted small">Example: https://your-domain.com/api/sync</div>
+        </div>
+        <div>
+          <label>Auto sync when online</label>
+          <select id="autoSync"><option value="1">Yes</option><option value="0">No</option></select>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button id="saveSettings" class="btn-ghost">Save</button>
+          <button id="closeSettings" class="btn-ghost">Close</button>
+        </div>
+      </div>
+      <div class="muted small" style="margin-top:10px">Note: Sync endpoint must accept JSON POSTs. This app stores queue locally and sends queued items to the endpoint.</div>
+    </div>
+  </div>
+
+<script>
+/* ============================================================
+   Prepaid Meter Tracker — completed single-file app
+   - IndexedDB storage (meters, users, sync_queue)
+   - Local auth with SHA-256 hashed passwords (local only)
+   - Settings: sync endpoint, auto-sync
+   - CSV import/export (robust)
+   - GPS capture, queue + sync, dynamic SW fallback
+   ============================================================ */
+
+/* -------------------- DB and helpers -------------------- */
+const DB_NAME = 'prepaid_meters_db_v2';
+const DB_VERSION = 2;
+let db;
+
+async function openDb(){
+  return new Promise((res,rej)=>{
+    const rq = indexedDB.open(DB_NAME, DB_VERSION);
+    rq.onupgradeneeded = e =>{
+      const d = e.target.result;
+      if(!d.objectStoreNames.contains('meters')){
+        const os = d.createObjectStore('meters',{keyPath:'id'});
+        os.createIndex('meter_number','meter_number',{unique:false});
+        os.createIndex('recorded_at','recorded_at',{unique:false});
+      }
+      if(!d.objectStoreNames.contains('users')){
+        d.createObjectStore('users',{keyPath:'username'});
+      }
+      if(!d.objectStoreNames.contains('sync_queue')){
+        d.createObjectStore('sync_queue',{keyPath:'id'});
+      }
+      if(!d.objectStoreNames.contains('meta')){
+        d.createObjectStore('meta',{keyPath:'key'});
+      }
+    };
+    rq.onsuccess = ()=>{ db = rq.result; res(db); };
+    rq.onerror = ()=>rej(rq.error);
+  });
+}
+
+function id(){ return 'id_'+Math.random().toString(36).slice(2,9); }
+
+function txStore(name, mode='readonly'){ return db.transaction([name], mode).objectStore(name); }
+
+/* IndexedDB CRUD */
+async function addOrUpdateMeter(record){
+  const o = db.transaction(['meters'],'readwrite').objectStore('meters');
+  return new Promise((res,rej)=>{
+    o.put(record).onsuccess = ()=>res(true);
+    o.onerror = ()=>rej(o.error);
+  });
+}
+
+async function getAllMeters(){
+  const o = db.transaction(['meters'],'readonly').objectStore('meters');
+  return new Promise((res,rej)=>{
+    const a=[]; const c = o.openCursor();
+    c.onsuccess = e=>{ const cur = e.target.result; if(cur){ a.push(cur.value); cur.continue(); } else res(a); };
+    c.onerror = ()=>rej(c.error);
+  });
+}
+
+async function deleteMeter(idv){
+  return new Promise((res,rej)=>{
+    const o = db.transaction(['meters'],'readwrite').objectStore('meters');
+    o.delete(idv).onsuccess=()=>res(true);
+    o.onerror=()=>rej(o.error);
+  });
+}
+
+/* sync queue */
+async function enqueueSync(obj){
+  if(!obj.id) obj.id = id();
+  obj.created_at = new Date().toISOString();
+  return new Promise((res,rej)=>{
+    const o = db.transaction(['sync_queue'],'readwrite').objectStore('sync_queue');
+    o.add(obj).onsuccess=()=>res(obj.id);
+    o.onerror=()=>rej(o.error);
+  });
+}
+
+async function getQueue(){
+  return new Promise((res,rej)=>{
+    const arr=[]; const o = db.transaction(['sync_queue'],'readonly').objectStore('sync_queue');
+    const c=o.openCursor(); c.onsuccess=e=>{const cur=e.target.result;if(cur){arr.push(cur.value);cur.continue()}else res(arr)}; c.onerror=()=>rej(c.error);
+  });
+}
+
+async function removeFromQueue(idv){
+  return new Promise((res,rej)=>{
+    const o = db.transaction(['sync_queue'],'readwrite').objectStore('sync_queue');
+    o.delete(idv).onsuccess=()=>res(true); o.onerror=()=>rej(o.error);
+  });
+}
+
+/* meta (settings) */
+async function setMeta(key, value){
+  return new Promise((res,rej)=>{
+    const o = db.transaction(['meta'],'readwrite').objectStore('meta');
+    o.put({key,value}).onsuccess=()=>res(true);
+    o.onerror=()=>rej(o.error);
+  });
+}
+async function getMeta(key){
+  return new Promise((res,rej)=>{
+    const o = db.transaction(['meta'],'readonly').objectStore('meta');
+    const rq = o.get(key); rq.onsuccess=()=>res(rq.result?rq.result.value:undefined); rq.onerror=()=>rej(rq.error);
+  });
+}
+
+/* users (with simple hash) */
+async function createUser(username, passwordHash){
+  return new Promise((res,rej)=>{
+    const o = db.transaction(['users'],'readwrite').objectStore('users');
+    o.add({username,passwordHash}).onsuccess=()=>res(true); o.onerror=()=>rej(o.error);
+  });
+}
+async function findUser(username){
+  return new Promise((res,rej)=>{
+    const o = db.transaction(['users'],'readonly').objectStore('users');
+    const rq = o.get(username); rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error);
+  });
+}
+
+/* -------------------- Utilities -------------------- */
+function escapeHtml(s){ if(!s) return ''; return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+function nowISO(){ return new Date().toISOString(); }
+function shortDate(iso){ try{ return new Date(iso).toLocaleString(); }catch(e){return iso} }
+
+/* SHA-256 hashing for local password */
+async function sha256hex(str){
+  const enc = new TextEncoder().encode(str);
+  const hash = await crypto.subtle.digest('SHA-256', enc);
+  const arr = Array.from(new Uint8Array(hash));
+  return arr.map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+/* -------------------- App state & init -------------------- */
+let currentUser = null;
+
+async function init(){
+  await openDb();
+  bindUI();
+  await loadSettingsToUI();
+  updateOnlineStatus();
+  refreshList();
+  updateQueueCount();
+  window.addEventListener('online',()=>{ updateOnlineStatus(); attemptSync(); });
+  window.addEventListener('offline', updateOnlineStatus);
+  setDateToNow();
+}
+
+/* Set recorded_at to now ISO */
+function setDateToNow(){ document.getElementById('recorded_at').value = new Date().toISOString(); }
+
+/* -------------------- UI binding -------------------- */
+function bindUI(){
+  document.getElementById('openAuth').addEventListener('click', ()=>showAuth(true));
+  document.getElementById('closeAuth').addEventListener('click', ()=>showAuth(false));
+  document.getElementById('tabSignIn').addEventListener('click', ()=>toggleAuth('sign'));
+  document.getElementById('tabRegister').addEventListener('click', ()=>toggleAuth('reg'));
+  document.getElementById('btnRegister').addEventListener('click', registerHandler);
+  document.getElementById('btnSignIn').addEventListener('click', signInHandler);
+
+  document.getElementById('meterForm').addEventListener('submit', (e)=>{ e.preventDefault(); saveRecord(); });
+  document.getElementById('saveBtn').addEventListener('click', saveRecord);
+  document.getElementById('resetBtn').addEventListener('click', resetForm);
+  document.getElementById('deleteEditing').addEventListener('click', deleteEditingRecord);
+  document.getElementById('captureGeo').addEventListener('click', captureGeo);
+  document.getElementById('q').addEventListener('input', refreshList);
+  document.getElementById('filterType').addEventListener('change', refreshList);
+  document.getElementById('exportCsv').addEventListener('click', exportCSV);
+  document.getElementById('importBtn').addEventListener('click', ()=>document.getElementById('importFile').click());
+  document.getElementById('importFile').addEventListener('change', handleImport);
+  document.getElementById('clearAll').addEventListener('click', async ()=>{ if(confirm('Delete ALL records and clear queue?')){ await clearAll(); refreshList(); updateQueueCount(); }});
+
+  document.getElementById('refreshBtn').addEventListener('click', ()=>{ refreshList(); updateQueueCount(); });
+
+  document.getElementById('openSettings').addEventListener('click', ()=>showSettings(true));
+  document.getElementById('closeSettings').addEventListener('click', ()=>showSettings(false));
+  document.getElementById('saveSettings').addEventListener('click', saveSettings);
+
+  // initialize endpoint display
+  getMeta('syncEndpoint').then(v=>document.getElementById('currentEndpoint').textContent = v || '/api/sync');
+}
+
+/* -------------------- Auth handlers -------------------- */
+function showAuth(show){ document.getElementById('authModal').style.display = show? 'flex':'none'; }
+function toggleAuth(tab){
+  document.getElementById('signinForm').style.display = tab==='sign'? 'block':'none';
+  document.getElementById('registerForm').style.display = tab==='reg'? 'block':'none';
+}
+
+async function registerHandler(){
+  const u = document.getElementById('reg_user').value.trim();
+  const p = document.getElementById('reg_pass').value;
+  if(!u || !p){ alert('enter username and password'); return; }
+  const h = await sha256hex(p);
+  try{ await createUser(u,h); alert('Account created. Please sign in.'); toggleAuth('sign'); } catch(e){ alert('Error creating account (maybe username exists)'); console.error(e); }
+}
+
+async function signInHandler(){
+  const u = document.getElementById('signin_user').value.trim();
+  const p = document.getElementById('signin_pass').value;
+  const user = await findUser(u);
+  if(!user){ alert('Invalid credentials'); return; }
+  const h = await sha256hex(p);
+  if(user.passwordHash === h){ currentUser = user; document.getElementById('currentUser').textContent = 'User: '+u; showAuth(false); } else alert('Invalid credentials');
+}
+
+/* -------------------- Save / edit / delete -------------------- */
+async function saveRecord(){
+  document.getElementById('saveBtn').disabled = true;
+  try{
+    if(!currentUser){
+      if(!confirm('No user signed in — record will be saved locally under "anonymous". Continue?')) {
+        document.getElementById('saveBtn').disabled = false;
+        return;
+      }
+    }
+    const rec = {
+      id: document.getElementById('editing_id').value || id(),
+      meter_number: document.getElementById('meter_number').value.trim(),
+      customer_name: document.getElementById('customer_name').value.trim(),
+      customer_number: document.getElementById('customer_number').value.trim(),
+      address: document.getElementById('address').value.trim(),
+      meter_type: document.getElementById('meter_type').value,
+      electrical_ref: document.getElementById('electrical_ref').value.trim(),
+      geo_ref: document.getElementById('geo_ref').value.trim(),
+      recorded_at: document.getElementById('recorded_at').value || new Date().toISOString(),
+      recorded_by: currentUser? currentUser.username : 'anonymous'
+    };
+    await addOrUpdateMeter(rec);
+    await enqueueSync({action:'upsert', record:rec});
+    updateQueueCount();
+    appendLog('Saved record '+rec.meter_number);
+    refreshList();
+    resetForm();
+    const auto = await getMeta('autoSync');
+    if(navigator.onLine && (auto === undefined || auto === '1')) attemptSync();
+  }catch(e){ console.error('save failed', e); alert('Save failed: '+(e.message||e)); }
+  finally{ document.getElementById('saveBtn').disabled = false; }
+}
+
+function resetForm(){
+  document.getElementById('meterForm').reset();
+  document.getElementById('editing_id').value='';
+  document.getElementById('deleteEditing').style.display='none';
+  setDateToNow();
+}
+
+async function deleteEditingRecord(){
+  const idv = document.getElementById('editing_id').value;
+  if(!idv) return;
+  if(!confirm('Delete this record?')) return;
+  await deleteMeter(idv);
+  await enqueueSync({action:'delete', id:idv});
+  updateQueueCount();
+  appendLog('Deleted record '+idv);
+  resetForm();
+  refreshList();
+}
+
+/* -------------------- List rendering -------------------- */
+async function refreshList(){
+  const all = await getAllMeters();
+  const q = document.getElementById('q').value.toLowerCase();
+  const type = document.getElementById('filterType').value;
+  let filtered = all.filter(it=>{
+    if(type && it.meter_type!==type) return false;
+    if(!q) return true;
+    return (it.meter_number||'').toLowerCase().includes(q) || (it.customer_name||'').toLowerCase().includes(q) || (it.address||'').toLowerCase().includes(q) || (it.customer_number||'').toLowerCase().includes(q);
+  });
+  filtered.sort((a,b)=> new Date(b.recorded_at)-new Date(a.recorded_at));
+  const list = document.getElementById('list'); list.innerHTML='';
+  for(const it of filtered){
+    const el = document.createElement('div'); el.className='meter-item';
+    el.innerHTML = `<div style="flex:1">
+      <div style="font-weight:700">${escapeHtml(it.meter_number||'—')} · ${escapeHtml(it.customer_name||'—')}</div>
+      <div class="meta">${escapeHtml(it.address||'—')} · ${escapeHtml(it.customer_number||'—')} · ${escapeHtml(it.meter_type||'—')}</div>
+      <div class="meta">Recorded: ${shortDate(it.recorded_at)} · By: ${escapeHtml(it.recorded_by||'—')}</div>
+    </div>`;
+    const actions = document.createElement('div'); actions.className='actions';
+    const btnEdit = document.createElement('button'); btnEdit.textContent='Edit'; btnEdit.addEventListener('click', ()=>loadIntoForm(it.id));
+    const btnDel = document.createElement('button'); btnDel.textContent='Delete'; btnDel.className='btn-ghost'; btnDel.addEventListener('click', async ()=>{ if(confirm('Delete record?')){ await deleteMeter(it.id); await enqueueSync({action:'delete', id:it.id}); updateQueueCount(); appendLog('Deleted '+it.id); refreshList(); }});
+    const btnGeo = document.createElement('button'); btnGeo.textContent='Locate'; btnGeo.className='btn-ghost';
+    btnGeo.addEventListener('click', ()=>{ if(it.geo_ref){ if(confirm('Open geo in map?')) openInMap(it.geo_ref); else alert('Geo: '+it.geo_ref); } else alert('No geo recorded'); });
+    actions.appendChild(btnEdit); actions.appendChild(btnDel); actions.appendChild(btnGeo);
+    el.appendChild(actions);
+    list.appendChild(el);
+  }
+}
+
+async function loadIntoForm(idv){
+  const o = db.transaction(['meters'],'readonly').objectStore('meters');
+  const rq = o.get(idv); rq.onsuccess=()=>{
+    const it = rq.result; if(!it) return;
+    document.getElementById('editing_id').value=it.id;
+    document.getElementById('meter_number').value=it.meter_number||'';
+    document.getElementById('customer_name').value=it.customer_name||'';
+    document.getElementById('customer_number').value=it.customer_number||'';
+    document.getElementById('address').value=it.address||'';
+    document.getElementById('meter_type').value=it.meter_type||'';
+    document.getElementById('electrical_ref').value=it.electrical_ref||'';
+    document.getElementById('geo_ref').value=it.geo_ref||'';
+    document.getElementById('recorded_at').value=it.recorded_at||new Date().toISOString();
+    document.getElementById('deleteEditing').style.display='inline-block';
+    window.scrollTo({top:0,behavior:'smooth'});
+  };
+}
+
+/* -------------------- Geo helpers -------------------- */
+function captureGeo(){
+  if(!navigator.geolocation){ alert('Geolocation not supported'); return; }
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const lat = pos.coords.latitude.toFixed(6);
+    const lng = pos.coords.longitude.toFixed(6);
+    document.getElementById('geo_ref').value = lat+','+lng;
+    appendLog('Captured geo: '+lat+','+lng);
+  }, err=>{ alert('Error getting GPS: '+err.message); }, { enableHighAccuracy:true, timeout:15000 });
+}
+
+function openInMap(geo){
+  const [lat,lng] = String(geo).split(',').map(s=>s.trim());
+  if(!lat || !lng){ alert('Invalid geo'); return; }
+  const url = `https://www.openstreetmap.org/?mlat=${encodeURIComponent(lat)}&mlon=${encodeURIComponent(lng)}#map=18/${encodeURIComponent(lat)}/${encodeURIComponent(lng)}`;
+  window.open(url, '_blank');
+}
+
+/* -------------------- CSV export / import -------------------- */
+function toCSV(rows){
+  const headers=['id','meter_number','customer_name','customer_number','address','meter_type','electrical_ref','geo_ref','recorded_at','recorded_by'];
+  const out=[headers.join(',')];
+  for(const r of rows){
+    out.push(headers.map(h=>`"${String(r[h]||'').replace(/"/g,'""')}"`).join(','));
+  }
+  return out.join('\n');
+}
+
+async function exportCSV(){
+  const rows = await getAllMeters();
+  const csv = toCSV(rows);
+  const blob = new Blob([csv],{type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='meters_export_'+(new Date().toISOString().slice(0,10))+'.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* CSV parsing: robust with quoted fields */
+function splitCSVLine(line){
+  const parts=[]; let cur=''; let inQ=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(ch==='"'){
+      if(inQ && line[i+1]==='"'){ cur+='"'; i++; }
+      else inQ = !inQ;
+    } else if(ch===',' && !inQ){
+      parts.push(cur); cur='';
+    } else cur+=ch;
+  }
+  parts.push(cur);
+  return parts.map(s=>s.replace(/^"|"$/g,''));
+}
+
+async function handleImport(e){
+  const f = e.target.files[0]; if(!f) return;
+  const txt = await f.text();
+  await parseCSVImport(txt);
+  e.target.value = ''; // reset
+}
+
+/* Normalization map & robust import */
+async function parseCSVImport(csv){
+  const lines = csv.split(/\r?\n/);
+  // keep non-empty trimmed lines
+  const trimmed = lines.map(l=>l.trim()).filter(l=>l.length>0);
+  if(trimmed.length<2){ alert('No data found in CSV'); return; }
+  const headers = splitCSVLine(trimmed[0]).map(h=>h.trim().toLowerCase());
+  // header-to-field mapping allow multiple names
+  const headerMap = headers.map(h=>{
+    if(/meter/.test(h) && /no|number|#/ .test(h)) return 'meter_number';
+    if(h === 'meter' || h === 'meter_number' || /meter/.test(h)) return 'meter_number';
+    if(h === 'name' || /customer.*name/.test(h)) return 'customer_name';
+    if(h === 'phone' || h === 'customer_number' || /phone|tel|mobile/.test(h)) return 'customer_number';
+    if(h === 'addr' || h === 'address' || /addr|location/.test(h)) return 'address';
+    if(h === 'meter_type' || /type/.test(h)) return 'meter_type';
+    if(h === 'electrical_ref' || /elect/.test(h)) return 'electrical_ref';
+    if(h === 'geo_ref' || /lat|lng|latlng|geo/.test(h)) return 'geo_ref';
+    if(h === 'recorded_at' || /date/.test(h)) return 'recorded_at';
+    if(h === 'recorded_by' || /user|by/.test(h)) return 'recorded_by';
+    return h; // fallback: keep header string
+  });
+
+  let imported = 0;
+  for(let i=1;i<trimmed.length;i++){
+    try{
+      const cols = splitCSVLine(trimmed[i]);
+      const obj = {};
+      for (let j = 0; j < headers.length; j++) {
+        const key = headerMap[j] || headers[j];
+        obj[key] = cols[j] || '';
+      }
+
+      // if CSV has meter number under unexpected header names, attempt to pick up common ones
+      if(!obj.meter_number){
+        const maybe = Object.values(obj).find(v => /^\d{4,}$/.test(String(v).trim()));
+        if(maybe) obj.meter_number = maybe;
+      }
+
+      if (!obj.id) obj.id = id();
+      if (!obj.recorded_at || obj.recorded_at.trim() === '') obj.recorded_at = new Date().toISOString();
+      if (!obj.recorded_by) obj.recorded_by = currentUser ? currentUser.username : 'import';
+      // default meter_type fallback
+      if (!obj.meter_type) obj.meter_type = 'Prepaid';
+
+      // add normalized object to DB and queue
+      const normalized = {
+        id: obj.id,
+        meter_number: obj.meter_number || '',
+        customer_name: obj.customer_name || obj.name || '',
+        customer_number: obj.customer_number || obj.phone || '',
+        address: obj.address || obj.addr || obj.location || '',
+        meter_type: obj.meter_type || 'Prepaid',
+        electrical_ref: obj.electrical_ref || obj.elect_ref || '',
+        geo_ref: obj.geo_ref || obj.latlng || '',
+        recorded_at: obj.recorded_at,
+        recorded_by: obj.recorded_by
+      };
+
+      await addOrUpdateMeter(normalized);
+      await enqueueSync({ action: 'upsert', record: normalized });
+      imported++;
+    } catch (e) {
+      console.error('Import row failed', i, e);
+    }
+  }
+
+  appendLog('Imported ' + imported + ' records from CSV.');
+  refreshList();
+  updateQueueCount();
+}
+
+/* -------------------- Clear All -------------------- */
+async function clearAll() {
+  await new Promise((res,rej)=>{ const t=db.transaction(['meters'],'readwrite').objectStore('meters').clear().onsuccess=res; });
+  await new Promise((res,rej)=>{ const t=db.transaction(['sync_queue'],'readwrite').objectStore('sync_queue').clear().onsuccess=res; });
+  appendLog('Cleared all records & queue');
+}
+
+/* -------------------- Queue + Sync -------------------- */
+async function updateQueueCount() {
+  const q = await getQueue();
+  document.getElementById('queueCount').textContent = q.length;
+}
+
+async function attemptSync() {
+  const endpoint = await getMeta('syncEndpoint') || '/api/sync';
+  const q = await getQueue();
+  if (q.length === 0) {
+    appendLog('No records to sync.');
+    return;
+  }
+
+  appendLog('Attempting sync (' + q.length + ' items) to ' + endpoint);
+  try {
+    // send everything in one POST (server expected to accept array)
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(q)
+    });
+
+    if (res.ok) {
+      for (const r of q) await removeFromQueue(r.id);
+      updateQueueCount();
+      appendLog('Sync successful (' + q.length + ' items sent)');
+    } else {
+      appendLog('Sync failed: ' + res.status);
+    }
+  } catch (err) {
+    appendLog('Sync error: ' + (err.message || err));
+  }
+}
+
+/* -------------------- Settings -------------------- */
+function showSettings(show) {
+  document.getElementById('settingsModal').style.display = show ? 'flex' : 'none';
+}
+
+async function saveSettings() {
+  const ep = document.getElementById('syncEndpoint').value.trim() || '/api/sync';
+  const auto = document.getElementById('autoSync').value;
+  await setMeta('syncEndpoint', ep);
+  await setMeta('autoSync', auto);
+  document.getElementById('currentEndpoint').textContent = ep;
+  appendLog('Settings saved');
+  showSettings(false);
+}
+
+async function loadSettingsToUI() {
+  const ep = await getMeta('syncEndpoint');
+  const auto = await getMeta('autoSync');
+  if (ep) document.getElementById('syncEndpoint').value = ep;
+  if (auto) document.getElementById('autoSync').value = auto;
+  document.getElementById('currentEndpoint').textContent = ep || '/api/sync';
+}
+
+/* -------------------- Logs & Status -------------------- */
+function appendLog(msg) {
+  const el = document.getElementById('syncLog');
+  const p = document.createElement('div');
+  p.textContent = `${new Date().toLocaleTimeString()} — ${msg}`;
+  el.prepend(p);
+}
+
+function updateOnlineStatus() {
+  const el = document.getElementById('onlineStatus');
+  if (navigator.onLine) {
+    el.textContent = 'Online';
+    el.style.background = 'rgba(16,185,129,0.15)';
+    el.style.color = 'var(--success)';
+  } else {
+    el.textContent = 'Offline';
+    el.style.background = 'rgba(239,68,68,0.15)';
+    el.style.color = 'var(--danger)';
+  }
+}
+
+/* -------------------- Service Worker dynamic fallback -------------------- */
+if('serviceWorker' in navigator){
+  (async function ensureSWFile(){
+    try{
+      const r = await fetch('./sw.js', {method:'HEAD'});
+      if(!r.ok) throw new Error('no sw');
+      // there's a sw.js; try registering it
+      try{ await navigator.serviceWorker.register('./sw.js'); console.log('sw.js registered'); }catch(e){ console.warn('register sw.js failed', e); }
+    }catch(e){
+      // create on-the-fly service worker blob
+      const swCode = `
+        const CACHE_NAME = 'pm-tracker-shell-v1';
+        const ASSETS = ['/', './prepaid-meter-tracker.html'];
+        self.addEventListener('install', e => {
+          self.skipWaiting();
+          e.waitUntil(caches.open(CACHE_NAME).then(c=>c.addAll(ASSETS).catch(()=>{})));
+        });
+        self.addEventListener('activate', e => { self.clients.claim(); });
+        self.addEventListener('fetch', e => {
+          const req = e.request;
+          if(req.method !== 'GET') return;
+          e.respondWith(fetch(req).then(res => res).catch(() => caches.match(req).then(r => r || caches.match('./prepaid-meter-tracker.html'))));
+        });
+      `;
+      const blob = new Blob([swCode], {type:'text/javascript'});
+      const url = URL.createObjectURL(blob);
+      try{ await navigator.serviceWorker.register(url); console.log('dynamic sw registered'); }catch(err){ console.warn('dynamic sw failed', err); }
+    }
+  })();
+}
+
+/* -------------------- Convenience helpers & boot -------------------- */
+function openSettings(){ showSettings(true); }
+init();
+
+/* Expose a small API to console for debugging */
+window.PMT = {
+  dbName: DB_NAME,
+  getAllMeters,
+  getQueue,
+  attemptSync,
+  setMeta,
+  getMeta,
+  clearAll
+};
+</script>
+</body>
+</html>
